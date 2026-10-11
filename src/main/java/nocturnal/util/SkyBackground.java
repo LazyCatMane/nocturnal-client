@@ -31,7 +31,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -42,11 +44,11 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * A looping video wrapped around the sky. Each video is an MJPEG file (JPEG frames back to back) in
- * assets/nocturnal/sky, made from an MP4 with ffmpeg. Frames are decoded one ahead on a worker thread, so only one
- * frame is ever on the GPU. Create, draw and close it on the render thread.
+ * assets/nocturnal/sky, made from an MP4 with ffmpeg. A few frames are decoded ahead on worker threads, and only
+ * the current one is on the GPU. Create, draw and close it on the render thread.
  */
 public final class SkyBackground implements AutoCloseable {
-    private static final int FPS = 15;
+    private static final int DECODE_AHEAD = 3, DECODE_THREADS = 2;
     private static final float RADIUS = 100;
     private static final int SEGMENTS_AROUND = 32, SEGMENTS_UP = 16;
     private static final int INDEX_COUNT = SEGMENTS_AROUND * SEGMENTS_UP * 6;
@@ -62,9 +64,10 @@ public final class SkyBackground implements AutoCloseable {
             .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, VertexFormat.Mode.QUADS)
             .build();
 
+    private final int fps;
     private final ByteBuffer data;
     private final int[] frameStart, frameLength;
-    private final ExecutorService decoder = Executors.newSingleThreadExecutor(r -> {
+    private final ExecutorService decoder = Executors.newFixedThreadPool(DECODE_THREADS, r -> {
         Thread t = new Thread(r, "Nocturnal sky decoder");
         t.setDaemon(true);
         return t;
@@ -74,10 +77,12 @@ public final class SkyBackground implements AutoCloseable {
     private final GpuSampler sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
     private final GpuBuffer dome = buildDome();
     private final long startNanos = System.nanoTime();
-    private CompletableFuture<NativeImage> next;
-    private int shown;
+    /** Frames shown+1, shown+2, ... in order, decoding or decoded. */
+    private final Deque<CompletableFuture<NativeImage>> ahead = new ArrayDeque<>();
+    private int shown, queued;
 
-    public SkyBackground(String name) throws IOException {
+    public SkyBackground(String name, int fps) throws IOException {
+        this.fps = fps;
         byte[] bytes;
         try (InputStream in = SkyBackground.class.getResourceAsStream("/assets/nocturnal/sky/" + name + ".mjpeg")) {
             if (in == null) throw new IOException("Missing sky background " + name);
@@ -95,7 +100,7 @@ public final class SkyBackground implements AutoCloseable {
                 GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING, TextureFormat.RGBA8, first.getWidth(), first.getHeight(), 1, 1);
         view = RenderSystem.getDevice().createTextureView(texture);
         upload(first);
-        queue(1);
+        fillAhead();
     }
 
     public void draw(float brightness) {
@@ -118,12 +123,12 @@ public final class SkyBackground implements AutoCloseable {
 
     /** Shows the next frame once it's due and decoded. A slow decoder slows the video down instead of skipping. */
     private void advance() {
-        long due = (System.nanoTime() - startNanos) * FPS / 1_000_000_000L % frameStart.length;
-        if (due == shown || !next.isDone()) return;
-        NativeImage image = next.join();
+        long due = (System.nanoTime() - startNanos) * fps / 1_000_000_000L % frameStart.length;
+        if (due == shown || !ahead.peekFirst().isDone()) return;
+        NativeImage image = ahead.pollFirst().join();
         shown = (shown + 1) % frameStart.length;
         if (image != null) upload(image);
-        queue(shown + 1);
+        fillAhead();
     }
 
     private void upload(NativeImage image) {
@@ -132,9 +137,11 @@ public final class SkyBackground implements AutoCloseable {
         }
     }
 
-    private void queue(int frame) {
-        int f = frame % frameStart.length;
-        next = CompletableFuture.supplyAsync(() -> decode(f), decoder);
+    private void fillAhead() {
+        while (ahead.size() < DECODE_AHEAD) {
+            int frame = queued = (queued + 1) % frameStart.length;
+            ahead.addLast(CompletableFuture.supplyAsync(() -> decode(frame), decoder));
+        }
     }
 
     private NativeImage decode(int frame) {
@@ -166,12 +173,14 @@ public final class SkyBackground implements AutoCloseable {
         VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
         try (ByteBufferBuilder bytes = ByteBufferBuilder.exactlySized(SEGMENTS_AROUND * SEGMENTS_UP * 4 * format.getVertexSize())) {
             BufferBuilder builder = new BufferBuilder(bytes, VertexFormat.Mode.QUADS, format);
+            int perPicture = SEGMENTS_AROUND / 2;
             for (int i = 0; i < SEGMENTS_AROUND; i++) {
+                float u0 = (float) (i % perPicture) / perPicture, u1 = (float) (i % perPicture + 1) / perPicture;
                 for (int j = 0; j < SEGMENTS_UP; j++) {
-                    domeVertex(builder, i, j);
-                    domeVertex(builder, i + 1, j);
-                    domeVertex(builder, i + 1, j + 1);
-                    domeVertex(builder, i, j + 1);
+                    domeVertex(builder, i, j, u0);
+                    domeVertex(builder, i + 1, j, u1);
+                    domeVertex(builder, i + 1, j + 1, u1);
+                    domeVertex(builder, i, j + 1, u0);
                 }
             }
             try (MeshData mesh = builder.buildOrThrow()) {
@@ -180,12 +189,14 @@ public final class SkyBackground implements AutoCloseable {
         }
     }
 
-    /** The picture is mirrored halfway around and again at the horizon, so its edges only ever meet themselves. */
-    private static void domeVertex(BufferBuilder builder, int around, int up) {
+    /**
+     * The picture goes around the sky twice so it stays sharp, which needs videos whose right edge blends into their
+     * left edge (see the ffmpeg wrap filter). Below the horizon it's mirrored, so the horizon has no seam.
+     */
+    private static void domeVertex(BufferBuilder builder, int around, int up, float u) {
         float yaw = around * Mth.TWO_PI / SEGMENTS_AROUND;
         float pitch = Mth.HALF_PI - up * Mth.PI / SEGMENTS_UP;
         float ring = Mth.cos(pitch) * RADIUS;
-        float u = 1 - Math.abs(2f * around / SEGMENTS_AROUND - 1);
         float v = 1 - Math.abs(2f * up / SEGMENTS_UP - 1);
         builder.addVertex(ring * Mth.cos(yaw), Mth.sin(pitch) * RADIUS, ring * Mth.sin(yaw)).setUv(u, v).setColor(-1);
     }
@@ -198,8 +209,10 @@ public final class SkyBackground implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
-        NativeImage pending = next.getNow(null);
-        if (pending != null) pending.close();
+        for (CompletableFuture<NativeImage> f : ahead) {
+            NativeImage pending = f.getNow(null);
+            if (pending != null) pending.close();
+        }
         view.close();
         texture.close();
         dome.close();

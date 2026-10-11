@@ -5,3 +5,6 @@ out/
 .idea/
 *.iml
 .vscode/
+
+# Source videos for sky backgrounds; only the converted assets/nocturnal/sky files are committed
+visual/

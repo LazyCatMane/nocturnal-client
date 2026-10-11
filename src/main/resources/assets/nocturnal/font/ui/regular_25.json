@@ -1,0 +1,5 @@
+{
+  "providers": [
+    { "type": "ttf", "file": "nocturnal:inter_medium.ttf", "size": 9, "oversample": 2.5 }
+  ]
+}

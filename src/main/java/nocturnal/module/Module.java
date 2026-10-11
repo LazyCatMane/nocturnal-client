@@ -3,6 +3,7 @@ package nocturnal.module;
 import net.minecraft.client.Minecraft;
 import nocturnal.Nocturnal;
 import nocturnal.config.Config;
+import nocturnal.event.Events;
 import nocturnal.setting.Setting;
 import nocturnal.util.Chat;
 
@@ -65,6 +66,7 @@ public abstract class Module {
             onDisable();
             Nocturnal.BUS.unregister(this);
         }
+        Nocturnal.BUS.post(new Events.ModuleToggle(this, on));
         Config.markDirty();
     }
 

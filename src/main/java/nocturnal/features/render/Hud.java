@@ -9,6 +9,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import nocturnal.event.Events;
 import nocturnal.event.Subscribe;
+import nocturnal.gui.Ui;
 import nocturnal.module.Category;
 import nocturnal.module.Module;
 import nocturnal.setting.BoolSetting;
@@ -19,8 +20,8 @@ import java.util.List;
 /** Coordinates bottom left, armor beside the hotbar, and TPS, ping, speed and potion timers bottom right. */
 public class Hud extends Module {
     private static final EquipmentSlot[] ARMOR = { EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET };
-    private static final int VALUE_COLOR = 0xFFFFFFFF, DIM_COLOR = 0xFFAAAAAA;
-    private static final int HOTBAR_HALF_WIDTH = 91, ITEM = 16, MARGIN = 2;
+    private static final int HOTBAR_HALF_WIDTH = 91, ITEM = 16, MARGIN = 4;
+    private static final int PADDING = 7, LINE = 12, LABEL_GAP = 12, BOX_HEIGHT = 18, RADIUS = 5, DOT = 3;
     private static final int TPS_SAMPLES = 5;
     private static final double NETHER_SCALE = 8;
 
@@ -35,6 +36,7 @@ public class Hud extends Module {
     private int tpsCount, tpsIndex;
     private long lastTimePacket;
     private double blocksPerSecond;
+    private int bottomRightHeight;
 
     public Hud() {
         super("Hud", "Coords, armor, TPS, ping, speed and potions", Category.RENDER);
@@ -57,13 +59,19 @@ public class Hud extends Module {
         if (inGame()) blocksPerSecond = Math.hypot(mc.player.getX() - mc.player.xo, mc.player.getZ() - mc.player.zo) * 20;
     }
 
+    /** Height of the bottom-right box plus its margin, so notifications can sit above it. */
+    public int bottomRightHeight() {
+        return isEnabled() ? bottomRightHeight : 0;
+    }
+
     @Subscribe
     private void onRender(Events.Render2D e) {
+        bottomRightHeight = 0;
         if (!inGame() || mc.options.hideGui) return;
         GuiGraphics g = e.graphics;
-        int width = g.guiWidth(), height = g.guiHeight(), line = mc.font.lineHeight + 1;
+        int width = g.guiWidth(), height = g.guiHeight();
 
-        if (coords.get()) drawCoords(g, height - line);
+        if (coords.get()) drawCoords(g, height - MARGIN - BOX_HEIGHT);
         if (armor.get()) drawArmor(g, width / 2 + HOTBAR_HALF_WIDTH + 4, height - ITEM - 3);
 
         List<String[]> right = new ArrayList<>();
@@ -71,20 +79,36 @@ public class Hud extends Module {
             for (MobEffectInstance effect : mc.player.getActiveEffects()) {
                 String name = effect.getEffect().value().getDisplayName().getString();
                 if (effect.getAmplifier() > 0) name += " " + (effect.getAmplifier() + 1);
-                right.add(new String[]{name + " ", effect.isInfiniteDuration() ? "**:**" : time(effect.getDuration())});
+                right.add(new String[]{name, effect.isInfiniteDuration() ? "**:**" : time(effect.getDuration())});
             }
         }
-        if (speed.get()) right.add(new String[]{"Speed ", String.format("%.1f b/s", blocksPerSecond)});
-        if (ping.get()) right.add(new String[]{"Ping ", latency() + " ms"});
-        if (tps.get()) right.add(new String[]{"TPS ", tpsCount == 0 ? "..." : String.format("%.1f", averageTps())});
+        if (speed.get()) right.add(new String[]{"Speed", String.format("%.1f b/s", blocksPerSecond)});
+        if (ping.get()) right.add(new String[]{"Ping", latency() + " ms"});
+        if (tps.get()) right.add(new String[]{"TPS", tpsCount == 0 ? "..." : String.format("%.1f", averageTps())});
 
-        int y = height - line * right.size();
-        for (String[] l : right) {
-            int x = width - MARGIN - mc.font.width(l[0] + l[1]);
-            g.drawString(mc.font, l[0], x, y, ClickGui.accent(), true);
-            g.drawString(mc.font, l[1], x + mc.font.width(l[0]), y, VALUE_COLOR, true);
-            y += line;
+        if (right.isEmpty()) return;
+
+        int inner = 0;
+        for (String[] l : right) inner = Math.max(inner, DOT + 4 + Ui.width(l[0]) + LABEL_GAP + Ui.width(l[1]));
+        int boxWidth = inner + PADDING * 2, boxHeight = right.size() * LINE + PADDING * 2 - (LINE - Ui.FONT_HEIGHT);
+        float x1 = width - MARGIN, y1 = height - MARGIN, x0 = x1 - boxWidth, y0 = y1 - boxHeight;
+        Ui.surface(g, x0, y0, x1, y1, RADIUS);
+        float y = y0 + PADDING;
+        for (int i = 0; i < right.size(); i++) {
+            String[] l = right.get(i);
+            label(g, l[0], x0 + PADDING, y, i);
+            Ui.text(g, l[1], x1 - PADDING - Ui.width(l[1]), y, Ui.TEXT);
+            y += LINE;
         }
+        bottomRightHeight = boxHeight + MARGIN * 2;
+    }
+
+    /** A label row: accent dot, grey label. Returns where the label ends. */
+    private static float label(GuiGraphics g, String text, float x, float y, int index) {
+        float cy = y + Ui.FONT_HEIGHT / 2f;
+        Ui.rect(g, x, cy - DOT / 2f, x + DOT, cy + DOT / 2f, DOT / 2f, Ui.gradient(index * 0.05f));
+        Ui.text(g, text, x + DOT + 4, y, Ui.MUTED);
+        return x + DOT + 4 + Ui.width(text);
     }
 
     private void drawCoords(GuiGraphics g, int y) {
@@ -92,11 +116,14 @@ public class Hud extends Module {
         boolean nether = mc.level.dimension() == Level.NETHER;
         double scale = nether ? NETHER_SCALE : 1 / NETHER_SCALE;
         String here = String.format("%.0f %.0f %.0f", x, py, z);
-        String other = mc.level.dimension() == Level.END ? "" : String.format(" [%.0f %.0f]", x * scale, z * scale);
-        g.drawString(mc.font, "XYZ ", MARGIN, y, ClickGui.accent(), true);
-        int vx = MARGIN + mc.font.width("XYZ ");
-        g.drawString(mc.font, here, vx, y, VALUE_COLOR, true);
-        g.drawString(mc.font, other, vx + mc.font.width(here), y, DIM_COLOR, true);
+        String other = mc.level.dimension() == Level.END ? "" : String.format("  %.0f %.0f", x * scale, z * scale);
+        int labelWidth = DOT + 4 + Ui.width("XYZ"), hereWidth = Ui.width(here);
+        float x0 = MARGIN, x1 = x0 + PADDING * 2 + labelWidth + LABEL_GAP + hereWidth + Ui.width(other);
+        Ui.surface(g, x0, y, x1, y + BOX_HEIGHT, RADIUS);
+        float ty = y + (BOX_HEIGHT - Ui.FONT_HEIGHT) / 2f;
+        float tx = label(g, "XYZ", x0 + PADDING, ty, 0) + LABEL_GAP;
+        Ui.text(g, here, tx, ty, Ui.TEXT);
+        Ui.text(g, other, tx + hereWidth, ty, Ui.MUTED);
     }
 
     private void drawArmor(GuiGraphics g, int x, int y) {

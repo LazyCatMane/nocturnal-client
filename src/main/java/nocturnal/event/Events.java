@@ -17,6 +17,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 import nocturnal.Nocturnal;
+import nocturnal.module.Module;
 import org.joml.Matrix4f;
 
 import java.util.List;
@@ -152,6 +153,9 @@ public final class Events {
         public Camera camera;
         public float tickDelta;
     }
+
+    /** A module was turned on or off, including when a config loads. */
+    public record ModuleToggle(Module module, boolean enabled) {}
 
     /** We're starting or continuing to mine a block, before this tick's progress is computed. */
     public record Mining(BlockPos pos) {}

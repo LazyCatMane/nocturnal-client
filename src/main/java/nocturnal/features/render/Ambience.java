@@ -17,10 +17,15 @@ import java.util.Locale;
 
 /** Custom sky, fog and cloud colors, an animated sky background and a fixed time of day. Only you see it; the server's time is unchanged. */
 public class Ambience extends Module {
-    /** Each one is assets/nocturnal/sky/(name in lower case).mjpeg. */
-    public enum Background { OFF, STORM }
+    /** Each one is assets/nocturnal/sky/(name in lower case).mjpeg, encoded at fps. */
+    public enum Background {
+        OFF(0), STORM(15), METEORS(30);
 
-    private final EnumSetting<Background> background = add(new EnumSetting<>("Background", "Animated sky; replaces the sky color in the overworld and End", Background.STORM));
+        final int fps;
+        Background(int fps) { this.fps = fps; }
+    }
+
+    private final EnumSetting<Background> background = add(new EnumSetting<>("Background", "Animated sky; replaces the sky color in the overworld and End", Background.METEORS));
     private final NumberSetting brightness = add(new NumberSetting("Brightness", "Background brightness", 1, 0.1, 1, 0.05));
     private final BoolSetting celestials = add(new BoolSetting("Sun and moon", "Draw the sun, moon and stars over the background", false));
     private final BoolSetting sky = add(new BoolSetting("Sky", "Replace the sky color", true));
@@ -76,7 +81,7 @@ public class Ambience extends Module {
             loadedKind = want;
             if (want != Background.OFF) {
                 try {
-                    loaded = new SkyBackground(want.name().toLowerCase(Locale.ROOT));
+                    loaded = new SkyBackground(want.name().toLowerCase(Locale.ROOT), want.fps);
                 } catch (IOException ex) {
                     Chat.error("Ambience: " + ex.getMessage());
                 }
