@@ -3,13 +3,23 @@ package nocturnal.event;
 import net.minecraft.client.Camera;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.inventory.tooltip.TooltipComponent;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.attribute.EnvironmentAttribute;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 import nocturnal.Nocturnal;
 import org.joml.Matrix4f;
+
+import java.util.List;
 
 /** Every event the client posts. Add new ones here and fire them from a mixin or Fabric callback. */
 public final class Events {
@@ -148,6 +158,81 @@ public final class Events {
 
     /** We're about to attack an entity, before the held item is sent to the server. */
     public record Attack(Entity target) {}
+
+    /** A container screen was clicked over a slot. Cancel to swallow the click. */
+    public static final class SlotClick extends Cancellable {
+        public final AbstractContainerScreen<?> screen;
+        public final Slot slot;
+        public final int button;
+        public SlotClick(AbstractContainerScreen<?> screen, Slot slot, int button) { this.screen = screen; this.slot = slot; this.button = button; }
+    }
+
+    /** An item's tooltip is asking for a picture to show under its text. Set image to provide one. */
+    public static final class TooltipImage {
+        public static final TooltipImage INSTANCE = new TooltipImage();
+        public ItemStack stack;
+        public TooltipComponent image;
+    }
+
+    /** Tooltip text for an item is being built. Add or change lines. */
+    public record TooltipLines(ItemStack stack, List<Component> lines) {}
+
+    /** A chunk arrived from the server and is now in the world. */
+    public record ChunkLoad(LevelChunk chunk) {}
+
+    /** A chunk is about to be removed from the world. */
+    public record ChunkUnload(LevelChunk chunk) {}
+
+    /**
+     * Chunk meshes are being built, on worker threads. Cancel to leave the block out; blocks that aren't hidden then
+     * draw all their faces, so they show through the hidden ones.
+     */
+    public static final class BlockVisibility extends Cancellable {
+        public final BlockState state;
+        public BlockVisibility(BlockState state) { this.state = state; }
+
+        public static boolean hidden(BlockState state) {
+            return Nocturnal.BUS.hasListeners(BlockVisibility.class) && Nocturnal.BUS.post(new BlockVisibility(state)).isCancelled();
+        }
+    }
+
+    /** A chat line is about to be added. Cancel to drop it, or replace message to change it. */
+    public static final class ChatReceive extends Cancellable {
+        public Component message;
+        public ChatReceive(Component message) { this.message = message; }
+    }
+
+    /** How many chat lines to keep. Vanilla keeps 100. */
+    public static final class ChatHistory {
+        public static final ChatHistory INSTANCE = new ChatHistory();
+        public int limit;
+    }
+
+    /** We're standing in a portal with a screen open. Cancel to keep the screen open. */
+    public static final class PortalScreen extends Cancellable {
+        public static boolean cancelled() {
+            return Nocturnal.BUS.hasListeners(PortalScreen.class) && Nocturnal.BUS.post(new PortalScreen()).isCancelled();
+        }
+    }
+
+    /** The sky, fog or clouds are asking for an environment value such as a color. Set value to override it. */
+    public static final class EnvironmentValue {
+        public static final EnvironmentValue INSTANCE = new EnvironmentValue();
+        public EnvironmentAttribute<?> attribute;
+        public Object value;
+    }
+
+    public enum SkyPart { SKY, DARK_DISC, CELESTIALS }
+
+    /** Part of the overworld or End sky is about to be drawn. Cancel to skip it; draw your own sky in its place. */
+    public static final class SkyRender extends Cancellable {
+        public final SkyPart part;
+        public SkyRender(SkyPart part) { this.part = part; }
+
+        public static boolean cancelled(SkyPart part) {
+            return Nocturnal.BUS.hasListeners(SkyRender.class) && Nocturnal.BUS.post(new SkyRender(part)).isCancelled();
+        }
+    }
 
     /** A screen finished building its widgets. Add buttons with Fabric's Screens.getButtons(screen). */
     public record ScreenInit(Screen screen) {}

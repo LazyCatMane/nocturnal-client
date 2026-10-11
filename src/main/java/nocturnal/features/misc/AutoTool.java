@@ -6,6 +6,7 @@ import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.level.block.state.BlockState;
 import nocturnal.event.Events;
 import nocturnal.event.Subscribe;
+import nocturnal.mixin.MultiPlayerGameModeAccessor;
 import nocturnal.module.Category;
 import nocturnal.module.Module;
 import nocturnal.setting.BoolSetting;
@@ -37,22 +38,13 @@ public class AutoTool extends Module {
         if (state.isAir()) return;
         Inventory inv = mc.player.getInventory();
         int selected = inv.getSelectedSlot();
-
-        int best = -1;
-        float bestSpeed = speed(inv.getItem(selected), state);
-        int size = inventory.get() ? Inventory.INVENTORY_SIZE : Inventory.getSelectionSize();
-        for (int i = 0; i < size; i++) {
-            float s = speed(inv.getItem(i), state);
-            if (s > bestSpeed) {
-                bestSpeed = s;
-                best = i;
-            }
-        }
+        int best = bestTool(state, inventory.get());
         if (best < 0) return;
 
         if (restoreSlot < 0) restoreSlot = selected;
         if (best < Inventory.getSelectionSize()) {
             inv.setSelectedSlot(best);
+            ((MultiPlayerGameModeAccessor) mc.gameMode).nocturnal$syncSelectedSlot();
             return;
         }
         if (swappedIndex >= 0) Interact.swapWithHotbar(swappedIndex, selected);
@@ -73,6 +65,22 @@ public class AutoTool extends Module {
         if (swappedIndex >= 0) Interact.swapWithHotbar(swappedIndex, restoreSlot);
         if (restoreSlot >= 0) inv.setSelectedSlot(restoreSlot);
         restoreSlot = swappedIndex = -1;
+    }
+
+    /** Inventory index of a tool that mines the block faster than the held item, or -1. */
+    public static int bestTool(BlockState state, boolean includeInventory) {
+        Inventory inv = mc.player.getInventory();
+        int best = -1;
+        float bestSpeed = speed(inv.getItem(inv.getSelectedSlot()), state);
+        int size = includeInventory ? Inventory.INVENTORY_SIZE : Inventory.getSelectionSize();
+        for (int i = 0; i < size; i++) {
+            float s = speed(inv.getItem(i), state);
+            if (s > bestSpeed) {
+                bestSpeed = s;
+                best = i;
+            }
+        }
+        return best;
     }
 
     private static float speed(ItemStack stack, BlockState state) {
