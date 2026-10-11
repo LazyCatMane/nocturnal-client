@@ -197,6 +197,11 @@ public final class Events {
     /** A chunk is about to be removed from the world. */
     public record ChunkUnload(LevelChunk chunk) {}
 
+    /** We left a server or singleplayer world. The world may already be gone. */
+    public static final class Disconnect {
+        public static final Disconnect INSTANCE = new Disconnect();
+    }
+
     /**
      * Chunk meshes are being built, on worker threads. Cancel to leave the block out; blocks that aren't hidden then
      * draw all their faces, so they show through the hidden ones.

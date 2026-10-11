@@ -6,6 +6,7 @@ import net.fabricmc.fabric.api.client.item.v1.ItemTooltipCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -68,6 +69,7 @@ public class Nocturnal implements ClientModInitializer {
         ScreenEvents.AFTER_INIT.register((mc, screen, width, height) -> BUS.post(new Events.ScreenInit(screen)));
         ClientChunkEvents.CHUNK_LOAD.register((level, chunk) -> BUS.post(new Events.ChunkLoad(chunk)));
         ClientChunkEvents.CHUNK_UNLOAD.register((level, chunk) -> BUS.post(new Events.ChunkUnload(chunk)));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, mc) -> BUS.post(Events.Disconnect.INSTANCE));
         ItemTooltipCallback.EVENT.register((stack, context, flag, lines) -> {
             if (BUS.hasListeners(Events.TooltipLines.class)) BUS.post(new Events.TooltipLines(stack, lines));
         });
