@@ -58,6 +58,8 @@ public class KillAura extends Module {
         if (!inGame() || mc.gameMode == null || (pauseOnUse.get() && mc.player.isUsingItem())) return;
         target = findTarget();
         if (target == null) return;
+        AutoWeapon weapon = Modules.get(AutoWeapon.class);
+        if (weapon.isEnabled()) weapon.equipBest();
 
         boolean ready = cooldown.get() ? mc.player.getAttackStrengthScale(0.5F) >= 1 : ticksSinceHit >= delay.getInt();
         Criticals criticals = Modules.get(Criticals.class);

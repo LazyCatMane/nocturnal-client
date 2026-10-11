@@ -3,10 +3,12 @@ package nocturnal.event;
 import net.minecraft.client.Camera;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
 import nocturnal.Nocturnal;
+import org.joml.Matrix4f;
 
 /** Every event the client posts. Add new ones here and fire them from a mixin or Fabric callback. */
 public final class Events {
@@ -59,7 +61,13 @@ public final class Events {
         public int color;
     }
 
-    public enum HideKind { FOG, WEATHER, TOTEM, EXPLOSIONS, HURT_CAM, OVERLAYS }
+    /** The world's projection for this frame, including view bobbing. Don't keep the matrix, copy it. */
+    public static final class WorldProjection {
+        public static final WorldProjection INSTANCE = new WorldProjection();
+        public Matrix4f projection;
+    }
+
+    public enum HideKind { FOG, WEATHER, TOTEM, EXPLOSIONS, HURT_CAM, OVERLAYS, PLAYER_NAMETAGS }
 
     /** Something is about to be drawn. Cancel to hide it. */
     public static final class Hide extends Cancellable {
@@ -109,6 +117,12 @@ public final class Events {
         public Camera camera;
         public float tickDelta;
     }
+
+    /** We're starting or continuing to mine a block, before this tick's progress is computed. */
+    public record Mining(BlockPos pos) {}
+
+    /** We're about to attack an entity, before the held item is sent to the server. */
+    public record Attack(Entity target) {}
 
     /** A screen finished building its widgets. Add buttons with Fabric's Screens.getButtons(screen). */
     public record ScreenInit(Screen screen) {}

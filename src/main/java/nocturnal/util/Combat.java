@@ -14,11 +14,13 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraft.world.level.ServerExplosion;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 /** Targeting and damage math shared by the combat modules. Mirrors the vanilla 1.21.11 server formulas. */
@@ -61,10 +63,16 @@ public final class Combat {
 
     /** Damage an end crystal exploding at center would deal to the entity after armor, resistance and protection. */
     public static float crystalDamage(LivingEntity target, Vec3 center) {
+        return crystalDamage(target, center, target.getBoundingBox());
+    }
+
+    /** Same as above, as if the entity's hitbox were at box. Used to judge positions before moving there. */
+    public static float crystalDamage(LivingEntity target, Vec3 center, AABB box) {
         float diameter = CRYSTAL_POWER * 2;
-        double dist = Math.sqrt(target.distanceToSqr(center)) / diameter;
+        Vec3 feet = new Vec3((box.minX + box.maxX) / 2, box.minY, (box.minZ + box.maxZ) / 2);
+        double dist = feet.distanceTo(center) / diameter;
         if (dist > 1) return 0;
-        double impact = (1 - dist) * ServerExplosion.getSeenPercent(center, target);
+        double impact = (1 - dist) * exposure(center, box, target);
         float damage = (float) ((impact * impact + impact) / 2 * 7 * diameter + 1);
 
         if (target instanceof Player) {
@@ -101,6 +109,30 @@ public final class Combat {
             if (explosion) protection += 2 * EnchantmentHelper.getItemEnchantmentLevel(enchantment(Enchantments.BLAST_PROTECTION), stack);
         }
         return CombatRules.getDamageAfterMagicAbsorb(damage, protection);
+    }
+
+    /** Fraction of the box the explosion can see. A copy of ServerExplosion.getSeenPercent that takes any box. */
+    private static float exposure(Vec3 center, AABB box, Entity entity) {
+        double dx = 1 / ((box.maxX - box.minX) * 2 + 1);
+        double dy = 1 / ((box.maxY - box.minY) * 2 + 1);
+        double dz = 1 / ((box.maxZ - box.minZ) * 2 + 1);
+        double offX = (1 - Math.floor(1 / dx) * dx) / 2;
+        double offZ = (1 - Math.floor(1 / dz) * dz) / 2;
+        int seen = 0, total = 0;
+        for (double x = 0; x <= 1; x += dx) {
+            for (double y = 0; y <= 1; y += dy) {
+                for (double z = 0; z <= 1; z += dz) {
+                    Vec3 point = new Vec3(Mth.lerp(x, box.minX, box.maxX) + offX, Mth.lerp(y, box.minY, box.maxY), Mth.lerp(z, box.minZ, box.maxZ) + offZ);
+                    if (mc.level.clip(new ClipContext(point, center, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, entity)).getType() == HitResult.Type.MISS) seen++;
+                    total++;
+                }
+            }
+        }
+        return total == 0 ? 0 : (float) seen / total;
+    }
+
+    public static int enchantLevel(ResourceKey<Enchantment> key, ItemStack stack) {
+        return EnchantmentHelper.getItemEnchantmentLevel(enchantment(key), stack);
     }
 
     private static Holder<Enchantment> enchantment(ResourceKey<Enchantment> key) {

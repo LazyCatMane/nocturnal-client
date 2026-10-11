@@ -28,6 +28,7 @@ public class NoRender extends Module {
 
     @Subscribe
     private void onHide(Events.Hide e) {
-        if (hide.get(e.kind).get()) e.cancel();
+        BoolSetting option = hide.get(e.kind);
+        if (option != null && option.get()) e.cancel();
     }
 }

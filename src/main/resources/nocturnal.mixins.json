@@ -3,6 +3,7 @@
   "package": "nocturnal.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "AvatarRendererMixin",
     "CameraAccessor",
     "CameraMixin",
     "ClientLevelMixin",
@@ -19,6 +20,7 @@
     "MinecraftAccessor",
     "MovePlayerPacketAccessor",
     "MultiPlayerGameModeAccessor",
+    "MultiPlayerGameModeMixin",
     "OptionInstanceAccessor",
     "ParticleEngineMixin",
     "ScreenEffectRendererMixin",
