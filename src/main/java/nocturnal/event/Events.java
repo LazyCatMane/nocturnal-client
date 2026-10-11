@@ -4,6 +4,7 @@ import net.minecraft.client.Camera;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.renderer.SubmitNodeStorage;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.inventory.tooltip.TooltipComponent;
 import net.minecraft.world.item.ItemStack;
@@ -71,6 +72,12 @@ public final class Events {
         public static final EntityOutline INSTANCE = new EntityOutline();
         public Entity entity;
         public int color;
+    }
+
+    /** Sign, text display and map label text about to be drawn this frame. Remove entries to skip them. */
+    public static final class WorldText {
+        public static final WorldText INSTANCE = new WorldText();
+        public List<SubmitNodeStorage.TextSubmit> submits;
     }
 
     /** The world's projection for this frame, including view bobbing. Don't keep the matrix, copy it. */

@@ -38,6 +38,7 @@
     "ScreenMixin",
     "SectionCompilerMixin",
     "SkyRendererMixin",
+    "TextFeatureRendererMixin",
     "WeatherEffectRendererMixin"
   ],
   "injectors": {
