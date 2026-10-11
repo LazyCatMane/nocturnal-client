@@ -12,7 +12,9 @@ import nocturnal.event.Subscribe;
 import nocturnal.gui.Ui;
 import nocturnal.module.Category;
 import nocturnal.module.Module;
+import nocturnal.module.Modules;
 import nocturnal.setting.BoolSetting;
+import nocturnal.setting.NumberSetting;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +33,8 @@ public class Hud extends Module {
     private final BoolSetting ping = add(new BoolSetting("Ping", "Your latency to the server", true));
     private final BoolSetting speed = add(new BoolSetting("Speed", "Horizontal speed in blocks per second", true));
     private final BoolSetting potions = add(new BoolSetting("Potions", "Active effects and time left", true));
+    private final NumberSetting scale = add(new NumberSetting("Scale", "Size of the HUD: watermark, module list, these boxes and notifications, even while this module is off", 0.75, 0.5, 2, 0.05));
+    private final BoolSetting fitWindow = add(new BoolSetting("Fit window", "Keep the HUD the same size relative to the window, whatever the window size or GUI scale", true));
 
     private final double[] tpsSamples = new double[TPS_SAMPLES];
     private int tpsCount, tpsIndex;
@@ -59,7 +63,16 @@ public class Hud extends Module {
         if (inGame()) blocksPerSecond = Math.hypot(mc.player.getX() - mc.player.xo, mc.player.getZ() - mc.player.zo) * 20;
     }
 
-    /** Height of the bottom-right box plus its margin, so notifications can sit above it. */
+    /** Scales g for the HUD; undo with g.pose().popMatrix(). Returns the scale, to divide the screen size by. */
+    public static float pushScale(GuiGraphics g) {
+        Hud hud = Modules.get(Hud.class);
+        float s = Ui.sharpScale(hud.scale.get().floatValue(), hud.fitWindow.get());
+        g.pose().pushMatrix();
+        g.pose().scale(s);
+        return s;
+    }
+
+    /** Height of the bottom-right box plus its margin, in HUD-scaled units, so notifications can sit above it. */
     public int bottomRightHeight() {
         return isEnabled() ? bottomRightHeight : 0;
     }
@@ -69,10 +82,15 @@ public class Hud extends Module {
         bottomRightHeight = 0;
         if (!inGame() || mc.options.hideGui) return;
         GuiGraphics g = e.graphics;
-        int width = g.guiWidth(), height = g.guiHeight();
+        if (armor.get()) drawArmor(g, g.guiWidth() / 2 + HOTBAR_HALF_WIDTH + 4, g.guiHeight() - ITEM - 3);
 
+        float s = pushScale(g);
+        drawBoxes(g, g.guiWidth() / s, g.guiHeight() / s);
+        g.pose().popMatrix();
+    }
+
+    private void drawBoxes(GuiGraphics g, float width, float height) {
         if (coords.get()) drawCoords(g, height - MARGIN - BOX_HEIGHT);
-        if (armor.get()) drawArmor(g, width / 2 + HOTBAR_HALF_WIDTH + 4, height - ITEM - 3);
 
         List<String[]> right = new ArrayList<>();
         if (potions.get()) {
@@ -111,7 +129,7 @@ public class Hud extends Module {
         return x + DOT + 4 + Ui.width(text);
     }
 
-    private void drawCoords(GuiGraphics g, int y) {
+    private void drawCoords(GuiGraphics g, float y) {
         double x = mc.player.getX(), py = mc.player.getY(), z = mc.player.getZ();
         boolean nether = mc.level.dimension() == Level.NETHER;
         double scale = nether ? NETHER_SCALE : 1 / NETHER_SCALE;

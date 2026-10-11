@@ -38,6 +38,7 @@ public final class Ui {
     private static final int MIN_DENSITY = 2, MAX_DENSITY = 8;
     private static final Style[] REGULAR = styles("regular"), BOLD = styles("bold");
     private static final int CIRCLE_SIZE = 32, GLOW_SIZE = 64;
+    private static final float DESIGN_HEIGHT = 540;
     private static final Minecraft mc = Minecraft.getInstance();
 
     /** Opacity multiplier for everything drawn through this class. Reset it to 1 when done. */
@@ -62,6 +63,19 @@ public final class Ui {
 
     public static int mix(int from, int to, float t) {
         return ARGB.srgbLerp(Mth.clamp(t, 0, 1), from, to);
+    }
+
+    // Scale
+
+    /**
+     * How much bigger to draw than Minecraft's GUI scale would. With fitWindow, a window DESIGN_HEIGHT pixels tall
+     * gives 2 screen pixels per unit at scale 1. The result lands on a half step of screen pixels per unit, where
+     * text is drawn 1:1 and stays sharp.
+     */
+    public static float sharpScale(float scale, boolean fitWindow) {
+        float guiScale = mc.getWindow().getGuiScale();
+        float pixels = scale * (fitWindow ? mc.getWindow().getHeight() / DESIGN_HEIGHT : guiScale);
+        return Math.max(1, Math.round(pixels * 2) / 2f) / guiScale;
     }
 
     // Text

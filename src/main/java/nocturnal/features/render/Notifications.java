@@ -47,8 +47,9 @@ public class Notifications extends Module {
         if (toasts.isEmpty() || mc.options.hideGui) return;
         GuiGraphics g = e.graphics;
         long now = System.currentTimeMillis(), life = (long) (duration.get() * 1000);
-        float right = g.guiWidth() - MARGIN;
-        float y = g.guiHeight() - Math.max(MARGIN, Modules.get(Hud.class).bottomRightHeight()) - HEIGHT;
+        float s = Hud.pushScale(g);
+        float right = g.guiWidth() / s - MARGIN;
+        float y = g.guiHeight() / s - Math.max(MARGIN, Modules.get(Hud.class).bottomRightHeight()) - HEIGHT;
 
         for (int i = toasts.size() - 1; i >= 0; i--) {
             Toast t = toasts.get(i);
@@ -61,6 +62,7 @@ public class Notifications extends Module {
             draw(g, t, right - (WIDTH + MARGIN) * slide + MARGIN, y, Math.min(age, 1), slide);
             y -= (HEIGHT + GAP) * slide;
         }
+        g.pose().popMatrix();
     }
 
     private void draw(GuiGraphics g, Toast t, float x0, float y0, float age, float fade) {

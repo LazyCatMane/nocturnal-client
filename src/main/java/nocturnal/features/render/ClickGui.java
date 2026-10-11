@@ -1,6 +1,7 @@
 package nocturnal.features.render;
 
 import nocturnal.gui.ClickGuiScreen;
+import nocturnal.gui.Ui;
 import nocturnal.module.Category;
 import nocturnal.module.Module;
 import nocturnal.setting.BoolSetting;
@@ -11,8 +12,6 @@ import org.lwjgl.glfw.GLFW;
 public class ClickGui extends Module {
     private static final int DEFAULT_ACCENT = 0xFF9B5CFF, DEFAULT_SECONDARY = 0xFF2F8CFF;
     private static final double DEFAULT_SPEED = 0.25;
-    /** Window height at which Fit window gives 2 screen pixels per unit, the menu's designed size. */
-    private static final float DESIGN_HEIGHT = 540;
     private static ClickGui instance;
 
     public final ColorSetting accent = add(new ColorSetting("Accent", "Main color of the GUI, HUD and chat; the gradient starts here", DEFAULT_ACCENT));
@@ -39,14 +38,9 @@ public class ClickGui extends Module {
         return instance == null ? DEFAULT_SPEED : instance.gradientSpeed.get();
     }
 
-    /**
-     * How much bigger to draw the menu than Minecraft's GUI scale would. The result is rounded so the menu lands on
-     * a half step of screen pixels per unit, where its text is drawn 1:1 and stays sharp.
-     */
+    /** How much bigger to draw the menu than Minecraft's GUI scale would. */
     public float menuScale() {
-        float guiScale = mc.getWindow().getGuiScale();
-        float pixels = scale.get().floatValue() * (fitWindow.get() ? mc.getWindow().getHeight() / DESIGN_HEIGHT : guiScale);
-        return Math.max(1, Math.round(pixels * 2) / 2f) / guiScale;
+        return Ui.sharpScale(scale.get().floatValue(), fitWindow.get());
     }
 
     @Override

@@ -43,7 +43,7 @@ public class ModuleList extends Module {
             .toList();
 
         GuiGraphics g = e.graphics;
-        float right = g.guiWidth() - MARGIN, y = MARGIN;
+        float right = g.guiWidth() / Hud.pushScale(g) - MARGIN, y = MARGIN;
         int index = 0;
         for (Map.Entry<Module, Anim> line : lines) {
             Module m = line.getKey();
@@ -67,6 +67,7 @@ public class ModuleList extends Module {
             y += LINE * slide;
             index++;
         }
+        g.pose().popMatrix();
     }
 
     private String extra(Module m) {

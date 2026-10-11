@@ -31,6 +31,7 @@ public class Watermark extends Module {
         if (mc.options.hideGui || mc.getDebugOverlay().showDebugScreen()) return;
         if (hasLogo == null) hasLogo = mc.getResourceManager().getResource(LOGO).isPresent();
         GuiGraphics g = e.graphics;
+        Hud.pushScale(g);
 
         int logo = hasLogo ? LOGO_SIZE + 5 : 0;
         float x0 = MARGIN, y0 = MARGIN, x1 = x0 + PADDING * 2 + logo + Ui.boldWidth(NAME), y1 = y0 + HEIGHT;
@@ -40,5 +41,6 @@ public class Watermark extends Module {
             g.blit(RenderPipelines.GUI_TEXTURED, LOGO, (int) x0 + PADDING, ly, 0, 0, LOGO_SIZE, LOGO_SIZE, LOGO_SIZE, LOGO_SIZE);
         }
         Ui.gradientText(g, NAME, x0 + PADDING + logo, y0 + (HEIGHT - Ui.FONT_HEIGHT) / 2f, true, 0);
+        g.pose().popMatrix();
     }
 }
