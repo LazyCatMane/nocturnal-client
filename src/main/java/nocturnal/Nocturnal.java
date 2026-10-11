@@ -5,7 +5,10 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.resources.Identifier;
+import nocturnal.account.Accounts;
 import nocturnal.command.Command;
 import nocturnal.command.Commands;
 import nocturnal.config.Config;
@@ -14,6 +17,7 @@ import nocturnal.event.Events;
 import nocturnal.module.Module;
 import nocturnal.module.Modules;
 import nocturnal.util.Baritone;
+import nocturnal.util.Rotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +41,8 @@ public class Nocturnal implements ClientModInitializer {
         Modules.init(instantiate(classes, Module.class));
         Commands.init(instantiate(classes, Command.class));
         Config.load();
+        Accounts.init();
+        BUS.register(new Rotations());
 
         ClientTickEvents.START_CLIENT_TICK.register(mc -> BUS.post(Events.TickPre.INSTANCE));
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
@@ -49,8 +55,20 @@ public class Nocturnal implements ClientModInitializer {
             e.tickDelta = delta.getGameTimeDeltaPartialTick(true);
             BUS.post(e);
         });
+        WorldRenderEvents.END_EXTRACTION.register(ctx -> {
+            if (!BUS.hasListeners(Events.Render3D.class)) return;
+            Events.Render3D e = Events.Render3D.INSTANCE;
+            e.tickDelta = ctx.tickCounter().getGameTimeDeltaPartialTick(false);
+            try (var gizmos = ctx.worldRenderer().collectPerFrameGizmos()) {
+                BUS.post(e);
+            }
+        });
+        ScreenEvents.AFTER_INIT.register((mc, screen, width, height) -> BUS.post(new Events.ScreenInit(screen)));
         ClientSendMessageEvents.ALLOW_CHAT.register(Commands::onChat);
-        ClientLifecycleEvents.CLIENT_STARTED.register(mc -> Baritone.applyPreset());
+        ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
+            Baritone.applyPreset();
+            Accounts.restoreLastUsed();
+        });
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> Config.save());
 
         LOG.info("Loaded {} modules", Modules.all().size());

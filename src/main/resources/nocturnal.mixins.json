@@ -3,8 +3,26 @@
   "package": "nocturnal.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "CameraAccessor",
+    "CameraMixin",
+    "ClientLevelMixin",
     "ConnectionMixin",
-    "KeyboardHandlerMixin"
+    "EntityMixin",
+    "EntityMotionPacketAccessor",
+    "EntityRendererMixin",
+    "ExplodePacketAccessor",
+    "FogRendererMixin",
+    "GameRendererMixin",
+    "GuiMixin",
+    "KeyboardHandlerMixin",
+    "LocalPlayerMixin",
+    "MinecraftAccessor",
+    "MovePlayerPacketAccessor",
+    "MultiPlayerGameModeAccessor",
+    "OptionInstanceAccessor",
+    "ParticleEngineMixin",
+    "ScreenEffectRendererMixin",
+    "WeatherEffectRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1
