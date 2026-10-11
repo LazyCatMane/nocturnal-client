@@ -5,9 +5,7 @@ import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -37,20 +35,10 @@ public class Surround extends Module {
     private static final int ROTATION_PRIORITY = 30;
     private static final double REACH = 4.5;
     private static final long REHIT_MS = 300;
-    /** Blast resistance of obsidian. Anything at or above survives crystals. */
-    private static final float BLAST_PROOF = 600;
     private static final int CENTER_TICKS = 10;
     private static final double CENTER_SPEED = 0.2, CENTERED = 0.05;
     /** Jumping more than this above where Stay mode started turns it off. */
     private static final double JUMP_TOLERANCE = 0.4;
-
-    /** In order of preference. Valuable blast-proof blocks are left alone. */
-    private static final List<Predicate<ItemStack>> BLOCKS = List.of(
-        s -> s.is(Items.OBSIDIAN),
-        s -> s.is(Items.CRYING_OBSIDIAN),
-        s -> s.getItem() instanceof BlockItem b && b.getBlock().getExplosionResistance() >= BLAST_PROOF
-            && !s.is(Items.ENDER_CHEST) && !s.is(Items.RESPAWN_ANCHOR) && !s.is(Items.NETHERITE_BLOCK) && !s.is(Items.ANCIENT_DEBRIS)
-    );
 
     private final EnumSetting<Mode> mode = add(new EnumSetting<>("Mode",
         "Stay centers you on enable and turns off when you walk away or jump. Always surrounds wherever you stand still", Mode.STAY));
@@ -100,7 +88,7 @@ public class Surround extends Module {
             return;
         }
 
-        Predicate<ItemStack> block = BLOCKS.stream().filter(p -> Interact.handFor(p, switchMode.get()) != null).findFirst().orElse(null);
+        Predicate<ItemStack> block = Interact.blastProofBlock(switchMode.get());
         if (block == null) return;
 
         List<BlockHitResult> hits = new ArrayList<>();
@@ -148,13 +136,7 @@ public class Surround extends Module {
 
     /** Floor first, then the feet ring, then the head ring on top of it. Only spots that still need a block. */
     private Set<BlockPos> needed() {
-        AABB box = mc.player.getBoundingBox();
-        int y = (int) Math.floor(mc.player.getY() + 0.01);
-        Set<BlockPos> feet = new LinkedHashSet<>();
-        for (int x = (int) Math.floor(box.minX); x <= (int) Math.floor(box.maxX - 1e-6); x++) {
-            for (int z = (int) Math.floor(box.minZ); z <= (int) Math.floor(box.maxZ - 1e-6); z++) feet.add(new BlockPos(x, y, z));
-        }
-
+        Set<BlockPos> feet = Interact.feet(mc.player.getBoundingBox());
         Set<BlockPos> needed = new LinkedHashSet<>();
         if (floor.get()) feet.forEach(f -> needed.add(f.below()));
         for (int level = 0; level < height.getInt(); level++) {

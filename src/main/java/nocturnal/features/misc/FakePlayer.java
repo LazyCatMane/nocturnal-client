@@ -11,6 +11,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import nocturnal.event.Events;
 import nocturnal.event.Subscribe;
 import nocturnal.features.combat.Criticals;
+import nocturnal.features.combat.PopCounter;
 import nocturnal.module.Category;
 import nocturnal.module.Module;
 import nocturnal.module.Modules;
@@ -120,6 +121,7 @@ public class FakePlayer extends Module {
 
     private void pop() {
         pops++;
+        Modules.get(PopCounter.class).record(fake);
         fake.setHealth(1);
         fake.setAbsorptionAmount(TOTEM_ABSORPTION);
         regen = REGEN_TICKS;

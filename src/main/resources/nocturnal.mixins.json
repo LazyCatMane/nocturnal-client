@@ -16,6 +16,7 @@
     "GameRendererMixin",
     "GuiMixin",
     "KeyboardHandlerMixin",
+    "LivingEntityMixin",
     "LocalPlayerMixin",
     "MinecraftAccessor",
     "MovePlayerPacketAccessor",
@@ -23,6 +24,7 @@
     "MultiPlayerGameModeMixin",
     "OptionInstanceAccessor",
     "ParticleEngineMixin",
+    "PlayerMixin",
     "ScreenEffectRendererMixin",
     "WeatherEffectRendererMixin"
   ],

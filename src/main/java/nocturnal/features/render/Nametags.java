@@ -9,7 +9,9 @@ import net.minecraft.world.phys.Vec3;
 import nocturnal.event.Events;
 import nocturnal.event.Subscribe;
 import nocturnal.module.Category;
+import nocturnal.features.combat.PopCounter;
 import nocturnal.module.Module;
+import nocturnal.module.Modules;
 import nocturnal.setting.BoolSetting;
 import nocturnal.setting.NumberSetting;
 import nocturnal.util.Combat;
@@ -27,7 +29,7 @@ public class Nametags extends Module {
     private static final float VANILLA_SCALE = 0.025F;
     /** Vanilla puts the tag this far above the head. */
     private static final double ABOVE_HEAD = 0.5;
-    private static final int BACKGROUND = 0x90000000, ITEM_SIZE = 16;
+    private static final int BACKGROUND = 0x90000000, ITEM_SIZE = 16, POP_COLOR = 0xFFFFAA00;
     private static final EquipmentSlot[] ITEM_ORDER = {
         EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET, EquipmentSlot.OFFHAND
     };
@@ -92,11 +94,15 @@ public class Nametags extends Module {
         String name = p.getName().getString();
         float health = Combat.health(p);
         String hp = " " + Math.round(health);
-        int textWidth = mc.font.width(name + hp);
+        PopCounter counter = Modules.get(PopCounter.class);
+        int popCount = counter.isEnabled() ? counter.pops(p) : 0;
+        String pops = popCount > 0 ? " -" + popCount : "";
+        int textWidth = mc.font.width(name + hp + pops);
         int left = -textWidth / 2;
         g.fill(left - 2, -11, left + textWidth + 2, 0, BACKGROUND);
         g.drawString(mc.font, name, left, -10, 0xFFFFFFFF, true);
         g.drawString(mc.font, hp, left + mc.font.width(name), -10, healthColor(health / p.getMaxHealth()), true);
+        if (popCount > 0) g.drawString(mc.font, pops, left + mc.font.width(name + hp), -10, POP_COLOR, true);
 
         if (items.get()) drawItems(g, p);
         g.pose().popMatrix();

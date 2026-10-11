@@ -7,14 +7,20 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import nocturnal.mixin.MultiPlayerGameModeAccessor;
 
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 /** Using items on blocks and moving items into your hand, shared by the modules that place things. */
@@ -23,6 +29,15 @@ public final class Interact {
 
     /** How a module may reach an item that isn't already in hand. */
     public enum Switch { NONE, NORMAL, SILENT }
+
+    /** Blast resistance of obsidian. Anything at or above survives crystals. */
+    private static final float BLAST_PROOF = 600;
+    private static final List<Predicate<ItemStack>> BLAST_PROOF_BLOCKS = List.of(
+        s -> s.is(Items.OBSIDIAN),
+        s -> s.is(Items.CRYING_OBSIDIAN),
+        s -> s.getItem() instanceof BlockItem b && b.getBlock().getExplosionResistance() >= BLAST_PROOF
+            && !s.is(Items.ENDER_CHEST) && !s.is(Items.RESPAWN_ANCHOR) && !s.is(Items.NETHERITE_BLOCK) && !s.is(Items.ANCIENT_DEBRIS)
+    );
 
     private Interact() {}
 
@@ -49,13 +64,53 @@ public final class Interact {
         return mode != Switch.NONE && hotbarSlot(item) >= 0 ? InteractionHand.MAIN_HAND : null;
     }
 
+    /** Obsidian, then crying obsidian, then any other blast-proof block that isn't worth keeping, whichever is reachable first. */
+    public static Predicate<ItemStack> blastProofBlock(Switch mode) {
+        return BLAST_PROOF_BLOCKS.stream().filter(p -> handFor(p, mode) != null).findFirst().orElse(null);
+    }
+
+    /** The block positions the bottom of the box stands in. One for a centered player, up to four when on an edge. */
+    public static Set<BlockPos> feet(AABB box) {
+        int y = (int) Math.floor(box.minY + 0.01);
+        Set<BlockPos> feet = new LinkedHashSet<>();
+        for (int x = (int) Math.floor(box.minX); x <= (int) Math.floor(box.maxX - 1e-6); x++) {
+            for (int z = (int) Math.floor(box.minZ); z <= (int) Math.floor(box.maxZ - 1e-6); z++) feet.add(new BlockPos(x, y, z));
+        }
+        return feet;
+    }
+
     /**
      * Uses the item on each hit through the normal game path, so the server, item count and slot stay in sync.
      * Switches once for all hits. Returns false if the item couldn't be reached.
      */
     public static boolean useOn(Predicate<ItemStack> item, List<BlockHitResult> hits, Switch mode) {
+        if (hits.isEmpty()) return false;
+        return withItem(item, mode, hand -> {
+            for (BlockHitResult target : hits) {
+                mc.gameMode.useItemOn(mc.player, hand, target);
+                mc.player.swing(hand);
+            }
+        });
+    }
+
+    /**
+     * Right-clicks the item into the air, like throwing a pearl or XP bottle. The use packet carries a rotation the
+     * server snaps to before throwing, so it's sent with the rotation the server last got instead of your view.
+     */
+    public static boolean use(Predicate<ItemStack> item, Switch mode) {
+        return withItem(item, mode, hand -> {
+            float yaw = mc.player.getYRot(), pitch = mc.player.getXRot();
+            mc.player.setYRot(Rotations.serverYaw());
+            mc.player.setXRot(Rotations.serverPitch());
+            mc.gameMode.useItem(mc.player, hand);
+            mc.player.setYRot(yaw);
+            mc.player.setXRot(pitch);
+        });
+    }
+
+    private static boolean withItem(Predicate<ItemStack> item, Switch mode, Consumer<InteractionHand> use) {
         InteractionHand hand = handFor(item, mode);
-        if (hand == null || hits.isEmpty()) return false;
+        if (hand == null) return false;
 
         Inventory inventory = mc.player.getInventory();
         int restore = -1;
@@ -63,10 +118,7 @@ public final class Interact {
             if (mode == Switch.SILENT) restore = inventory.getSelectedSlot();
             inventory.setSelectedSlot(hotbarSlot(item));
         }
-        for (BlockHitResult target : hits) {
-            mc.gameMode.useItemOn(mc.player, hand, target);
-            mc.player.swing(hand);
-        }
+        use.accept(hand);
         if (restore >= 0) {
             inventory.setSelectedSlot(restore);
             ((MultiPlayerGameModeAccessor) mc.gameMode).nocturnal$syncSelectedSlot();
@@ -101,8 +153,22 @@ public final class Interact {
      */
     public static boolean swapWithHotbar(int inventoryIndex, int hotbarSlot) {
         if (mc.player.containerMenu != mc.player.inventoryMenu) return false;
-        int menuSlot = inventoryIndex < Inventory.getSelectionSize() ? InventoryMenu.USE_ROW_SLOT_START + inventoryIndex : inventoryIndex;
-        mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, menuSlot, hotbarSlot, ClickType.SWAP, mc.player);
+        mc.gameMode.handleInventoryMouseClick(mc.player.inventoryMenu.containerId, menuSlot(inventoryIndex), hotbarSlot, ClickType.SWAP, mc.player);
         return true;
+    }
+
+    /** Swaps any two slots of the player inventory screen by picking up and putting down, like moving them by hand. */
+    public static boolean swapMenuSlots(int a, int b) {
+        if (mc.player.containerMenu != mc.player.inventoryMenu || !mc.player.containerMenu.getCarried().isEmpty()) return false;
+        int id = mc.player.inventoryMenu.containerId;
+        mc.gameMode.handleInventoryMouseClick(id, a, 0, ClickType.PICKUP, mc.player);
+        mc.gameMode.handleInventoryMouseClick(id, b, 0, ClickType.PICKUP, mc.player);
+        mc.gameMode.handleInventoryMouseClick(id, a, 0, ClickType.PICKUP, mc.player);
+        return true;
+    }
+
+    /** The inventory screen slot for an inventory index (hotbar 0-8, main 9-35). */
+    public static int menuSlot(int inventoryIndex) {
+        return inventoryIndex < Inventory.getSelectionSize() ? InventoryMenu.USE_ROW_SLOT_START + inventoryIndex : inventoryIndex;
     }
 }

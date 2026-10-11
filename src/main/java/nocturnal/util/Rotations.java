@@ -38,6 +38,14 @@ public final class Rotations {
         Rotations.action = action;
     }
 
+    public static float serverYaw() {
+        return serverYaw;
+    }
+
+    public static float serverPitch() {
+        return serverPitch;
+    }
+
     /** True once something this tick already claimed rotations at the given priority or above. */
     public static boolean isClaimed(int priority) {
         return requested && Rotations.priority >= priority;

@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 import nocturnal.Nocturnal;
 import org.joml.Matrix4f;
@@ -84,6 +85,30 @@ public final class Events {
     public static final class PlayerMove {
         public static final PlayerMove INSTANCE = new PlayerMove();
         public Vec3 movement;
+    }
+
+    /** The vehicle we're controlling is about to move. Replace movement to change where it goes. */
+    public static final class VehicleMove {
+        public static final VehicleMove INSTANCE = new VehicleMove();
+        public Entity vehicle;
+        public Vec3 movement;
+    }
+
+    /** The local player is walking near a block edge. Cancel to stop at the edge as if sneaking. */
+    public static final class StopAtEdge extends Cancellable {
+        public static boolean cancelled() {
+            return Nocturnal.BUS.hasListeners(StopAtEdge.class) && Nocturnal.BUS.post(new StopAtEdge()).isCancelled();
+        }
+    }
+
+    /** The local player is above the surface of a still liquid. Cancel to let them stand on it. */
+    public static final class StandOnFluid extends Cancellable {
+        public final FluidState fluid;
+        public StandOnFluid(FluidState fluid) { this.fluid = fluid; }
+
+        public static boolean cancelled(FluidState fluid) {
+            return Nocturnal.BUS.hasListeners(StandOnFluid.class) && Nocturnal.BUS.post(new StandOnFluid(fluid)).isCancelled();
+        }
     }
 
     /** The mouse is turning the local player. Cancel to keep the player's view still. */
