@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "package": "nocturnal.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ConnectionMixin",
+    "KeyboardHandlerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

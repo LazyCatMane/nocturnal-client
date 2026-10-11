@@ -1,0 +1,56 @@
+plugins {
+    id "fabric-loom" version "1.14-SNAPSHOT"
+}
+
+version = project.mod_version
+group = "nocturnal"
+base.archivesName = "nocturnal"
+
+repositories {
+    maven { url = "https://maven.meteordev.org/snapshots" }
+    maven { url = "https://babbaj.github.io/maven/" }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    modCompileOnly "meteordevelopment:baritone:${project.baritone_version}"
+    modLocalRuntime "meteordevelopment:baritone:${project.baritone_version}"
+    localRuntime "dev.babbaj:nether-pathfinder:1.4.1"
+}
+
+// Lists every class under nocturnal/features so the client can register them without scanning at runtime.
+def featureIndex = layout.buildDirectory.dir("generated/featureIndex")
+tasks.register("indexFeatures") {
+    def classesDir = sourceSets.main.java.classesDirectory
+    inputs.dir(classesDir)
+    outputs.dir(featureIndex)
+    doLast {
+        def root = classesDir.get().asFile.toPath()
+        def names = fileTree(root).matching { include "nocturnal/features/**/*.class"; exclude "**/*\$*" }.files
+            .collect { root.relativize(it.toPath()).toString().replace('\\', '.').replace('/', '.') - ~/\.class$/ }
+            .sort()
+        def out = featureIndex.get().file("nocturnal/features.txt").asFile
+        out.parentFile.mkdirs()
+        out.text = names.join("\n")
+    }
+}
+
+processResources {
+    from(tasks.named("indexFeatures"))
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+    it.options.encoding = "UTF-8"
+}

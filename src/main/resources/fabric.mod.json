@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "nocturnal",
+  "version": "${version}",
+  "name": "Nocturnal",
+  "description": "Automation client for 6b6t.",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["nocturnal.Nocturnal"]
+  },
+  "mixins": ["nocturnal.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "fabric-api": "*",
+    "minecraft": "1.21.11",
+    "java": ">=21"
+  }
+}
