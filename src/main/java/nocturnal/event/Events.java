@@ -79,7 +79,10 @@ public final class Events {
         public Matrix4f projection;
     }
 
-    public enum HideKind { FOG, WEATHER, TOTEM, EXPLOSIONS, HURT_CAM, OVERLAYS, PLAYER_NAMETAGS }
+    public enum HideKind {
+        FOG, WEATHER, TOTEM, EXPLOSIONS, HURT_CAM, OVERLAYS, PLAYER_NAMETAGS,
+        ITEMS, FALLING_BLOCKS, ARMOR_STANDS, ITEM_FRAMES, FIREBALLS, BEACON_BEAMS, BANNERS, ENCHANTING_BOOK
+    }
 
     /** Something is about to be drawn. Cancel to hide it. */
     public static final class Hide extends Cancellable {
