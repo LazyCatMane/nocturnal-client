@@ -8,7 +8,7 @@
   "entrypoints": {
     "client": ["nocturnal.Nocturnal"]
   },
-  "mixins": ["nocturnal.mixins.json"],
+  "mixins": ["nocturnal.mixins.json", "nocturnal.baritone.mixins.json"],
   "accessWidener": "nocturnal.accesswidener",
   "depends": {
     "fabricloader": ">=0.19.5",

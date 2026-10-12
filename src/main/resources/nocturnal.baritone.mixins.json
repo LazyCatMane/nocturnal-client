@@ -1,0 +1,12 @@
+{
+  "required": false,
+  "package": "nocturnal.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ElytraBehaviorMixin",
+    "ElytraProcessMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

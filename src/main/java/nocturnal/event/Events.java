@@ -253,6 +253,13 @@ public final class Events {
         }
     }
 
+    /** ElytraFly is piloting. Cancel Baritone's rockets, vanilla fly tick, and auto-land. */
+    public static final class BaritoneFirework extends Cancellable {
+        public static boolean cancelled() {
+            return Nocturnal.BUS.hasListeners(BaritoneFirework.class) && Nocturnal.BUS.post(new BaritoneFirework()).isCancelled();
+        }
+    }
+
     /** A screen finished building its widgets. Add buttons with Fabric's Screens.getButtons(screen). */
     public record ScreenInit(Screen screen) {}
 
