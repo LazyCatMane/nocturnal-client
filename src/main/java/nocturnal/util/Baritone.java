@@ -93,6 +93,11 @@ public final class Baritone {
         if (AVAILABLE) Api.prepareFlight();
     }
 
+    /** Same as #elytra reset: rebuild the nether path to the current destination. */
+    public static void resetElytra() {
+        if (AVAILABLE) Api.resetElytra();
+    }
+
     public static boolean nether() {
         var player = Minecraft.getInstance().player;
         return player != null && player.level().dimension() == Level.NETHER;
@@ -193,6 +198,11 @@ public final class Baritone {
             holdFireworkAttempt(elytra);
             // Drop the walker so it cannot fight #elytra. Do not cancelEverything — that kills the path.
             if (primary().getCustomGoalProcess().isActive()) primary().getCustomGoalProcess().onLostControl();
+        }
+
+        static void resetElytra() {
+            IElytraProcess elytra = primary().getElytraProcess();
+            if (elytra.isActive()) elytra.resetState();
         }
 
         static void command(String command) {

@@ -4,19 +4,26 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.Identifier;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ItemLike;
+import net.minecraft.world.level.block.Block;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
  * A set of registry entries such as blocks or items, written as ids ("netherrack, minecraft:obsidian").
- * Commands and the GUI replace the whole list; commands also take "add <ids>", "remove <ids>" and "clear".
+ * The GUI shows every entry in the registry as a checkbox. Commands replace the whole list, or take
+ * "add <ids>", "remove <ids>" and "clear".
  */
 public class ListSetting<T> extends Setting<Set<T>> {
     private final Registry<T> registry;
+    private List<T> options;
 
     @SafeVarargs
     public ListSetting(String name, String description, Registry<T> registry, T... defaults) {
@@ -28,14 +35,42 @@ public class ListSetting<T> extends Setting<Set<T>> {
         return value.contains(entry);
     }
 
+    /** Adds the entry if it's missing, removes it if it's there. */
+    public void toggle(T entry) {
+        Set<T> next = new LinkedHashSet<>(value);
+        if (!next.remove(entry)) next.add(entry);
+        set(Collections.unmodifiableSet(next));
+    }
+
+    /** Every entry in the registry, sorted by id. */
+    public List<T> options() {
+        if (options == null) options = registry.stream().sorted(Comparator.comparing(this::id)).toList();
+        return options;
+    }
+
+    /** The entry's id, without the namespace for vanilla entries. */
+    public String id(T entry) {
+        Identifier id = registry.getKey(entry);
+        return id.getNamespace().equals(Identifier.DEFAULT_NAMESPACE) ? id.getPath() : id.toString();
+    }
+
+    /** The in-game name, like "Deepslate Diamond Ore". */
+    public String name(T entry) {
+        if (entry instanceof Block block) return block.getName().getString();
+        if (entry instanceof Item item) return new ItemStack(item).getHoverName().getString();
+        return id(entry);
+    }
+
+    /** The entry as an item for drawing, or empty for blocks with no item such as air, fluids and fire. */
+    public ItemStack icon(T entry) {
+        return entry instanceof ItemLike item ? new ItemStack(item) : ItemStack.EMPTY;
+    }
+
     @Override
     public String display() {
         if (value.isEmpty()) return "none";
         List<String> ids = new ArrayList<>();
-        for (T entry : value) {
-            Identifier id = registry.getKey(entry);
-            ids.add(id.getNamespace().equals(Identifier.DEFAULT_NAMESPACE) ? id.getPath() : id.toString());
-        }
+        for (T entry : value) ids.add(id(entry));
         return String.join(", ", ids);
     }
 

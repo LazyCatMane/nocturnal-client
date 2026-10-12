@@ -17,6 +17,8 @@ import nocturnal.util.Baritone;
 public class ElytraFly extends Module {
     private static final double STUCK_DIST = 0.08;
     private static final int STUCK_TICKS = 8;
+    private static final int UNSTUCK_TICKS = 20;
+    private static final int RESET_COOLDOWN = 80;
 
     private final NumberSetting speed = add(new NumberSetting("Speed", "Horizontal blocks per tick", 1.5, 0.1, 5, 0.05));
     private final NumberSetting verticalSpeed = add(new NumberSetting("Vertical speed", "Up/down blocks per tick", 0.5, 0, 3, 0.05));
@@ -24,6 +26,8 @@ public class ElytraFly extends Module {
 
     private Vec3 lastPos;
     private int stuck;
+    private int unstuck;
+    private int resetWait;
 
     public ElytraFly() {
         super("ElytraFly", "Controlled elytra flight", Category.MOVEMENT);
@@ -33,14 +37,14 @@ public class ElytraFly extends Module {
     public String info() {
         if (!following()) return speed.display();
         if (!Baritone.nether() && !Baritone.elytraFlying()) return "Nether";
-        if (stuck >= STUCK_TICKS) return "Unstuck";
+        if (resetWait > 0) return "Reset";
+        if (unstuck > 0 || stuck >= STUCK_TICKS) return "Unstuck";
         return Baritone.hasFlyPath() ? "Path" : "Calc";
     }
 
     @Override
     protected void onDisable() {
-        lastPos = null;
-        stuck = 0;
+        clearStuck();
     }
 
     @Subscribe
@@ -51,27 +55,20 @@ public class ElytraFly extends Module {
     @Subscribe
     private void onTick(Events.TickPre e) {
         if (!inGame() || !following()) {
-            lastPos = null;
-            stuck = 0;
+            clearStuck();
             return;
         }
         if (Baritone.atGoal()) {
             Baritone.stop();
-            lastPos = null;
-            stuck = 0;
+            clearStuck();
             return;
         }
         Baritone.prepareFlight();
-        if (mc.player.isFallFlying() && Baritone.hasFlyPath()) {
-            Vec3 pos = mc.player.position();
-            if (lastPos != null && pos.distanceTo(lastPos) < STUCK_DIST) stuck++;
-            else stuck = 0;
-            lastPos = pos;
+        if (mc.player.isFallFlying()) {
+            tickStuck();
             return;
         }
-        lastPos = null;
-        stuck = 0;
-        if (mc.player.isFallFlying()) return;
+        clearStuck();
         if (!mc.player.getItemBySlot(EquipmentSlot.CHEST).is(Items.ELYTRA)) return;
         if (mc.player.onGround()) mc.player.jumpFromGround();
         else mc.options.keyJump.setDown(true);
@@ -96,32 +93,65 @@ public class ElytraFly extends Module {
 
     /** Fly to the next #elytra node. Keep moving while the next path segment is still calculating. */
     private Vec3 followPath() {
-        Vec3 target = Baritone.flyTarget();
-        if (target == null) return Vec3.ZERO;
+        if (resetWait == 0 && stuck >= STUCK_TICKS && unstuck == 0) unstuck = UNSTUCK_TICKS;
+        if (unstuck > 0) return breakStuck(wishToward(Baritone.flyTarget()));
+        Vec3 wish = wishToward(Baritone.flyTarget());
+        if (wish == null) return unstuck > 0 || resetWait > 0 ? breakStuck(null) : Vec3.ZERO;
+        return slide(wish);
+    }
+
+    private Vec3 wishToward(Vec3 target) {
+        if (target == null) return null;
         Vec3 delta = target.subtract(mc.player.position());
-        if (delta.lengthSqr() < 1e-6) return Vec3.ZERO;
+        if (delta.lengthSqr() < 1e-6) return null;
         Vec3 dir = delta.normalize();
         double cap = speed.get();
         double vy = dir.y * cap;
         if (Math.abs(vy) > verticalSpeed.get()) vy = Math.copySign(verticalSpeed.get(), vy);
-        Vec3 wish = new Vec3(dir.x * cap, vy, dir.z * cap);
-        return stuck >= STUCK_TICKS ? breakStuck(wish) : slide(wish);
+        return new Vec3(dir.x * cap, vy, dir.z * cap);
     }
 
-    /** Nudge off a corner or ceiling after sitting still for a few ticks. */
+    /**
+     * Same idea as tapping W: fly the way you're looking, plus a few sidesteps if that is blocked.
+     * Path follow can sit at a node and return zero; this must still move.
+     */
     private Vec3 breakStuck(Vec3 wish) {
         AABB box = mc.player.getBoundingBox();
-        double step = Math.max(0.55, Math.min(speed.get(), 1.2));
-        Vec3 toward = wish.lengthSqr() > 0 ? wish.normalize().scale(step) : Vec3.ZERO;
+        double step = Math.max(speed.get(), 0.8);
+        Vec3 look = manual(new Vec2(0, 1));
+        double up = Math.max(verticalSpeed.get(), 0.6);
+        Vec3 toward = wish != null && wish.lengthSqr() > 0 ? wish.normalize().scale(step) : look;
         Vec3[] tries = {
-            new Vec3(0, step, 0), new Vec3(0, -step, 0),
-            toward, new Vec3(toward.x, step * 0.7, toward.z),
-            new Vec3(step, 0, 0), new Vec3(-step, 0, 0), new Vec3(0, 0, step), new Vec3(0, 0, -step),
-            new Vec3(step, step * 0.5, 0), new Vec3(-step, step * 0.5, 0),
-            new Vec3(0, step * 0.5, step), new Vec3(0, step * 0.5, -step)
+            look, look.add(0, up, 0), toward, new Vec3(toward.x, up, toward.z),
+            new Vec3(0, up, 0), new Vec3(0, -up, 0),
+            new Vec3(step, 0, 0), new Vec3(-step, 0, 0), new Vec3(0, 0, step), new Vec3(0, 0, -step)
         };
-        for (Vec3 tryMove : tries) if (fits(box, tryMove)) return tryMove;
-        return unstick();
+        for (Vec3 tryMove : tries) if (tryMove.lengthSqr() > 0 && fits(box, tryMove)) return tryMove;
+        return look.lengthSqr() > 0 ? look : new Vec3(0, up, 0);
+    }
+
+    private void tickStuck() {
+        Vec3 pos = mc.player.position();
+        boolean still = lastPos != null && pos.distanceTo(lastPos) < STUCK_DIST;
+        if (still) stuck++;
+        else stuck = 0;
+        if (unstuck > 0) {
+            unstuck--;
+            if (unstuck == 0 && still) {
+                Baritone.resetElytra();
+                stuck = 0;
+                resetWait = RESET_COOLDOWN;
+            }
+        }
+        if (resetWait > 0) resetWait--;
+        lastPos = pos;
+    }
+
+    private void clearStuck() {
+        lastPos = null;
+        stuck = 0;
+        unstuck = 0;
+        resetWait = 0;
     }
 
     /** Move as much of the wish vector as fits, sliding along walls instead of stopping. */
@@ -146,7 +176,7 @@ public class ElytraFly extends Module {
             new Vec3(0.4, 0.3, 0), new Vec3(-0.4, 0.3, 0), new Vec3(0, 0.3, 0.4), new Vec3(0, 0.3, -0.4)
         };
         for (Vec3 step : tries) if (fits(box, step)) return step;
-        return new Vec3(0, 0.2, 0);
+        return Vec3.ZERO;
     }
 
     private boolean fits(AABB box, Vec3 step) {
