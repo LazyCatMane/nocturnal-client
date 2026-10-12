@@ -5,10 +5,18 @@ import nocturnal.module.Module;
 import nocturnal.setting.BoolSetting;
 import nocturnal.setting.ColorSetting;
 import nocturnal.setting.EnumSetting;
+import nocturnal.setting.ListSetting;
 import nocturnal.setting.NumberSetting;
 import nocturnal.setting.Setting;
 import nocturnal.util.Keys;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /** One GUI row per setting. A new setting type only needs a case in forSetting(). */
 final class Widgets {
@@ -17,6 +25,9 @@ final class Widgets {
     /** The widget currently capturing keyboard input, if any. */
     static Widget focused;
 
+    /** Mouse position in GUI units, set by the screen each frame for hover effects. */
+    static int mouseX, mouseY;
+
     private Widgets() {}
 
     static Widget forSetting(Setting<?> setting) {
@@ -24,17 +35,33 @@ final class Widgets {
             case BoolSetting s -> new Bool(s);
             case NumberSetting s -> new Slider(s);
             case EnumSetting<?> s -> new Cycle(s);
+            case ListSetting<?> s -> dropdown(s);
             default -> new Text(setting);
         };
+    }
+
+    private static <T> Widget dropdown(ListSetting<T> setting) {
+        return new Dropdown<>(setting);
     }
 
     abstract static class Widget {
         abstract String description();
 
+        /** Height this frame, given the panel's row height. Widgets that grow, like an open dropdown, return more. */
+        int height(int row) { return row; }
+
         /** Draws into the row x..x+w, y..y+h. */
         abstract void render(GuiGraphics g, int x, int y, int w, int h);
 
+        /** For widgets taller than a row that need to know where in them the click landed. */
+        void click(double mouseX, double mouseY, int x, int y, int w, int button) {
+            click(mouseX, x, w, button);
+        }
+
         void click(double mouseX, int x, int w, int button) {}
+
+        /** Returns true if the wheel was used, so the panel doesn't scroll too. */
+        boolean scroll(int direction) { return false; }
 
         void drag(double mouseX, int x, int w) {}
 
@@ -177,7 +204,7 @@ final class Widgets {
         }
 
         /** Keeps the end of text being typed visible. */
-        private static String fitEnd(String s, int width) {
+        static String fitEnd(String s, int width) {
             while (!s.isEmpty() && Ui.width(s) > width) s = s.substring(1);
             return s;
         }
@@ -204,6 +231,191 @@ final class Widgets {
         }
 
         void type(String chars) { buffer += chars; }
+    }
+
+    /** Every registry entry with a checkbox, behind a header that opens it. Type in the box to filter. */
+    static final class Dropdown<T> extends Widget {
+        private static final int SEARCH = 13, OPTION = 12, VISIBLE = 8, FOOTER = 12, GAP = 2, BOX = 7;
+        private static final int OPEN_HEIGHT = SEARCH + GAP + VISIBLE * OPTION + FOOTER + GAP;
+
+        private final ListSetting<T> setting;
+        private final Anim expand = new Anim(14, 0);
+        /** Matches for the query, checked ones first. Only rebuilt on open and while typing so rows don't jump when clicked. */
+        private List<T> shown = List.of();
+        private String query = "";
+        private boolean open, typing;
+        private int row, scroll, top;
+
+        Dropdown(ListSetting<T> setting) { this.setting = setting; }
+
+        /** Only over the header, so the tooltip never covers the options. */
+        String description() {
+            return mouseY >= top + row ? null : setting.description + " (click to open, right click to reset)";
+        }
+
+        int height(int row) {
+            this.row = row;
+            return row + Math.round(Ui.ease(expand.update(open ? 1 : 0)) * OPEN_HEIGHT);
+        }
+
+        private void refresh() {
+            String q = query.trim().toLowerCase(Locale.ROOT).replace(' ', '_');
+            List<T> on = new ArrayList<>(), off = new ArrayList<>();
+            for (T entry : setting.options()) {
+                if (!setting.id(entry).contains(q)) continue;
+                (setting.contains(entry) ? on : off).add(entry);
+            }
+            on.addAll(off);
+            shown = on;
+            scroll = Math.clamp(scroll, 0, Math.max(0, shown.size() - VISIBLE));
+        }
+
+        void render(GuiGraphics g, int x, int y, int w, int h) {
+            typing = focused == this;
+            top = y;
+            Ui.text(g, setting.name, x + PAD, textY(y, row), Ui.TEXT);
+            String count = String.valueOf(setting.get().size());
+            float px = x + w - PAD - Ui.width(count) - 13;
+            Ui.rect(g, px, y + 2, x + w - PAD, y + row - 2, 3, open ? Ui.withAlpha(Ui.gradient(0), 0.35f) : Ui.SURFACE);
+            Ui.text(g, count, px + 3, textY(y, row), Ui.TEXT);
+            float ax = x + w - PAD - 7, ay = y + row / 2f - 1.5f;
+            for (int i = 0; i < 3; i++) {
+                float rowY = open ? ay + 2 - i : ay + i;
+                Ui.rect(g, ax + i, rowY, ax + 5 - i, rowY + 1, 0, Ui.TEXT);
+            }
+            if (h <= row) return;
+
+            g.enableScissor(x, y + row, x + w, y + h);
+            int left = x + PAD, right = x + w - PAD;
+            int sy = y + row;
+            Ui.rect(g, left, sy, right, sy + SEARCH, 3, Ui.SURFACE);
+            float sty = textY(sy, SEARCH);
+            if (query.isEmpty() && !typing) {
+                Ui.text(g, "Search...", left + 4, sty, Ui.MUTED);
+            } else {
+                String text = Text.fitEnd(query, right - left - 10);
+                Ui.text(g, text, left + 4, sty, Ui.TEXT);
+                if (typing && System.currentTimeMillis() / 500 % 2 == 0) {
+                    float cx = left + 5 + Ui.width(text);
+                    Ui.rect(g, cx, sy + 2, cx + 1, sy + SEARCH - 2, 0, Ui.gradient(0));
+                }
+            }
+            if (typing) Ui.rect(g, left + 2, sy + SEARCH - 1, right - 2, sy + SEARCH, 0, Ui.gradient(0), Ui.gradient(0.25f));
+
+            int ly = sy + SEARCH + GAP;
+            boolean bar = shown.size() > VISIBLE;
+            int textRight = right - (bar ? 4 : 0);
+            if (shown.isEmpty()) Ui.text(g, "No matches", left + 2, textY(ly, OPTION), Ui.MUTED);
+            for (int i = 0; i < VISIBLE && scroll + i < shown.size(); i++) {
+                T entry = shown.get(scroll + i);
+                int oy = ly + i * OPTION;
+                boolean checked = setting.contains(entry);
+                if (mouseX >= left && mouseX < textRight && mouseY >= oy && mouseY < oy + OPTION && mouseY < y + h) {
+                    Ui.rect(g, left, oy, textRight, oy + OPTION, 3, 0x0CFFFFFF);
+                }
+                float bx = left + 2, by = oy + (OPTION - BOX) / 2f;
+                checkbox(g, bx, by, checked);
+                String id = Ui.fit(setting.id(entry), (int) (textRight - bx - BOX - 4));
+                Ui.text(g, id, bx + BOX + 3, textY(oy, OPTION), checked ? Ui.TEXT : Ui.MUTED);
+            }
+            if (bar) {
+                float trackY0 = ly, trackY1 = ly + VISIBLE * OPTION;
+                float thumb = Math.max(6, (trackY1 - trackY0) * VISIBLE / shown.size());
+                float t = (float) scroll / (shown.size() - VISIBLE);
+                float thumbY = trackY0 + (trackY1 - trackY0 - thumb) * t;
+                Ui.rect(g, right - 2, trackY0, right, trackY1, 1, TRACK);
+                Ui.rect(g, right - 2, thumbY, right, thumbY + thumb, 1, Ui.gradient(0));
+            }
+
+            int fy = ly + VISIBLE * OPTION;
+            Ui.text(g, setting.get().size() + "/" + setting.options().size(), left + 2, textY(fy, FOOTER), Ui.MUTED);
+            int noneX = noneX(right), allX = allX(right);
+            Ui.text(g, "All", allX, textY(fy, FOOTER), over(allX, "All", fy) ? Ui.TEXT : Ui.MUTED);
+            Ui.text(g, "None", noneX, textY(fy, FOOTER), over(noneX, "None", fy) ? Ui.TEXT : Ui.MUTED);
+            g.disableScissor();
+        }
+
+        private static void checkbox(GuiGraphics g, float x, float y, boolean checked) {
+            if (!checked) {
+                Ui.rect(g, x, y, x + BOX, y + BOX, 2, TRACK);
+                return;
+            }
+            Ui.rect(g, x, y, x + BOX, y + BOX, 2, Ui.gradient(0), Ui.gradient(0.25f));
+            // A tick drawn as a staircase of pixels: down two, then up four.
+            int[][] tick = {{1, 3}, {2, 4}, {3, 3}, {4, 2}, {5, 1}};
+            for (int[] p : tick) Ui.rect(g, x + p[0], y + p[1], x + p[0] + 1, y + p[1] + 1, 0, 0xFFFFFFFF);
+        }
+
+        private static int noneX(int right) { return right - 2 - Ui.width("None"); }
+
+        private static int allX(int right) { return noneX(right) - 6 - Ui.width("All"); }
+
+        private static boolean over(int x, String label, int fy) {
+            return mouseX >= x - 1 && mouseX < x + Ui.width(label) + 1 && mouseY >= fy && mouseY < fy + FOOTER;
+        }
+
+        void click(double mouseX, double mouseY, int x, int y, int w, int button) {
+            if (mouseY < y + row) {
+                if (button == 0) {
+                    open = !open;
+                    if (open) refresh();
+                } else if (button == 1) {
+                    setting.reset();
+                    if (open) refresh();
+                }
+                return;
+            }
+            if (!open || button != 0) return;
+            int left = x + PAD, right = x + w - PAD;
+            int sy = y + row, ly = sy + SEARCH + GAP, fy = ly + VISIBLE * OPTION;
+            if (mouseY < sy + SEARCH) {
+                focused = this;
+                return;
+            }
+            // The screen clears focus on every click; keep typing into the filter after ticking a box.
+            if (typing) focused = this;
+            if (mouseY >= ly && mouseY < fy) {
+                int i = scroll + (int) ((mouseY - ly) / OPTION);
+                if (mouseX >= left && mouseX < right && i < shown.size()) setting.toggle(shown.get(i));
+            } else if (mouseY >= fy && mouseY < fy + FOOTER) {
+                int allX = allX(right), noneX = noneX(right);
+                if (mouseX >= allX - 1 && mouseX < allX + Ui.width("All") + 1) setShown(true);
+                else if (mouseX >= noneX - 1 && mouseX < noneX + Ui.width("None") + 1) setShown(false);
+            }
+        }
+
+        /** Checks or unchecks every entry matching the filter. */
+        private void setShown(boolean on) {
+            Set<T> next = new LinkedHashSet<>(setting.get());
+            if (on) next.addAll(shown);
+            else next.removeAll(shown);
+            setting.set(Collections.unmodifiableSet(next));
+        }
+
+        boolean scroll(int direction) {
+            if (!open) return false;
+            scroll = Math.clamp(scroll - direction, 0, Math.max(0, shown.size() - VISIBLE));
+            return true;
+        }
+
+        boolean key(int key) {
+            switch (key) {
+                case GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER, GLFW.GLFW_KEY_ESCAPE -> focused = null;
+                case GLFW.GLFW_KEY_BACKSPACE -> {
+                    if (query.isEmpty()) return true;
+                    query = query.substring(0, query.length() - 1);
+                    refresh();
+                }
+                default -> { return false; }
+            }
+            return true;
+        }
+
+        void type(String chars) {
+            query += chars;
+            scroll = 0;
+            refresh();
+        }
     }
 
     static final class Bind extends Widget {

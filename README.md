@@ -32,7 +32,7 @@ public class Example extends Module {
 }
 ```
 
-- Settings: `BoolSetting`, `NumberSetting` (step 1 = integer), `EnumSetting`, `StringSetting`, `ColorSetting`.
+- Settings: `BoolSetting`, `NumberSetting` (step 1 = integer), `EnumSetting`, `StringSetting`, `ColorSetting`, `ListSetting` (blocks or items from a registry, shown in the GUI as a searchable dropdown of checkboxes).
 - Listeners only run while the module is enabled. Events are in `event/Events.java`.
 - `enabledByDefault()` / `defaultKey(GLFW.GLFW_KEY_X)` in the constructor set first-run defaults.
 - Override `info()` to show text next to the name in the module list.

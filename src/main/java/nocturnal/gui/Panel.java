@@ -33,7 +33,11 @@ final class Panel {
     }
 
     /** Where something clickable was drawn last frame. widget is null for a module row. */
-    private record Hit(Entry entry, Widgets.Widget widget, int x, float y, int w) {}
+    private record Hit(Entry entry, Widgets.Widget widget, int x, float y, int w, int h) {
+        boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX < x + w && mouseY >= y && mouseY < y + h;
+        }
+    }
 
     final Category category;
     private final Config.PanelState state;
@@ -71,7 +75,9 @@ final class Panel {
         float openness = Ui.ease(open.update(state.open || !query.isEmpty() ? 1 : 0));
         float content = 0;
         for (Entry e : shown) {
-            e.settingsHeight = Ui.ease(e.expand.update(e.expanded ? 1 : 0)) * (e.widgets.size() * ROW + 4);
+            int widgets = 0;
+            for (Widgets.Widget w : e.widgets) widgets += w.height(ROW);
+            e.settingsHeight = Ui.ease(e.expand.update(e.expanded ? 1 : 0)) * (widgets + 4);
             content += ROW + e.settingsHeight;
         }
         float body = content == 0 ? 0 : (content + INSET * 2) * openness;
@@ -107,7 +113,7 @@ final class Panel {
             }
             float ty = ry + (ROW - Ui.FONT_HEIGHT) / 2f;
             Ui.text(g, e.module.name, rx0 + PAD - INSET + 2 * lit, ty, Ui.mix(Ui.MUTED, Ui.TEXT, Math.max(lit, h * 0.6f)));
-            hits.add(new Hit(e, null, rx0, ry, rx1 - rx0));
+            hits.add(new Hit(e, null, rx0, ry, rx1 - rx0, ROW));
             if (over) hovered = e.module.description;
             ry += ROW;
 
@@ -118,10 +124,11 @@ final class Panel {
             float wy = ry + 2;
             for (Widgets.Widget w : e.widgets) {
                 if (wy > sy1) break;
-                w.render(g, rx0 + 4, Math.round(wy), rx1 - rx0 - 8, ROW);
-                hits.add(new Hit(e, w, rx0 + 4, wy, rx1 - rx0 - 8));
-                if (mouseX >= rx0 && mouseX < rx1 && mouseY >= wy && mouseY < Math.min(wy + ROW, sy1)) hovered = w.description();
-                wy += ROW;
+                int wh = w.height(ROW), top = Math.round(wy);
+                w.render(g, rx0 + 4, top, rx1 - rx0 - 8, wh);
+                hits.add(new Hit(e, w, rx0 + 4, top, rx1 - rx0 - 8, wh));
+                if (mouseX >= rx0 && mouseX < rx1 && mouseY >= wy && mouseY < Math.min(wy + wh, sy1)) hovered = w.description();
+                wy += wh;
             }
             g.disableScissor();
             ry = sy1;
@@ -144,7 +151,7 @@ final class Panel {
             return true;
         }
         for (Hit hit : hits) {
-            if (mouseX < hit.x() || mouseX >= hit.x() + hit.w() || mouseY < hit.y() || mouseY >= hit.y() + ROW) continue;
+            if (!hit.contains(mouseX, mouseY)) continue;
             if (hit.widget() == null) {
                 if (button == 0) hit.entry().module.toggle();
                 else if (button == 1) hit.entry().expanded = !hit.entry().expanded;
@@ -152,7 +159,7 @@ final class Panel {
                 active = hit.widget();
                 activeX = hit.x();
                 activeW = hit.w();
-                active.click(mouseX, activeX, activeW, button);
+                active.click(mouseX, mouseY, activeX, (int) hit.y(), activeW, button);
             }
             return true;
         }
@@ -173,6 +180,14 @@ final class Panel {
         dragging = false;
         if (active != null) active.release();
         active = null;
+    }
+
+    /** Gives the wheel to the setting under the mouse, like an open dropdown. Returns true if it was used. */
+    boolean scrollWidget(double mouseX, double mouseY, int direction) {
+        for (Hit hit : hits) {
+            if (hit.widget() != null && hit.contains(mouseX, mouseY)) return hit.widget().scroll(direction);
+        }
+        return false;
     }
 
     void scroll(int amount) {

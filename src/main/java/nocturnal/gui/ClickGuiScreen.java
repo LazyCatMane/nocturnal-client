@@ -49,6 +49,8 @@ public class ClickGuiScreen extends Screen {
         shown = true;
         if (!mouseDown) scale = Modules.get(ClickGui.class).menuScale();
         int mx = (int) (mouseX / scale), my = (int) (mouseY / scale);
+        Widgets.mouseX = mx;
+        Widgets.mouseY = my;
         float in = Ui.ease(opening.update(1));
         Ui.alpha = in;
         g.pose().pushMatrix();
@@ -138,6 +140,9 @@ public class ClickGuiScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        for (int i = panels.size() - 1; i >= 0; i--) {
+            if (panels.get(i).scrollWidget(mouseX / scale, mouseY / scale, (int) Math.signum(vertical))) return true;
+        }
         for (Panel p : panels) p.scroll((int) (vertical * 15));
         return true;
     }
